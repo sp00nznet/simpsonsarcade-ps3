@@ -9,9 +9,9 @@
 | 2. Analysis | SELF/ELF structural analysis | ✅ Complete |
 | 3. Decrypt | EBOOT.BIN (SELF) → EBOOT.elf | ✅ Complete |
 | 4. Disasm/find | OPD + heuristic function discovery | ✅ Complete — 14,754 functions |
-| 5. NID resolve | Import table → library/function names | 🔜 Next |
-| 6. Lift | ppu_lifter → C++ | ⬜ |
-| 7. Link | Build against ps3recomp runtime | ⬜ |
+| 5. NID resolve | Import table → library/function names | ✅ Complete — 20 libs, 256 funcs |
+| 6. Lift | ppu_lifter → C++ | ✅ Complete — 17,397 funcs, 119 MB |
+| 7. Link | Build against ps3recomp runtime | 🔜 Next |
 | 8. Boot | Reach main() / CRT init | ⬜ |
 | 9. Arcade core | Mount SIMPSONS.SR, run emulator core | ⬜ |
 | 10. GPU/Audio/Input | RSX→D3D12, cellAudio, cellPad | ⬜ |
@@ -55,16 +55,40 @@
 - vs. the 360 build's **15,237** functions — **96.8% overlap in count**. Strong confirmation it's
   the same codebase: same arcade core, slightly tighter PS3 toolchain output.
 
+**Discovery — it's an arcade emulator (see [`docs/emulator-architecture.md`](docs/emulator-architecture.md))**
+- EBOOT strings reference the ROM names directly (`Simpsons_4J.KON`, `..._TILES/SPRITES/SOUND/
+  SAMPLES.ROM`), the `0B/%s.SR` load path, plus `YM2151`, `z80`, `DUPLICATE_SPRITE`/`REMOVE_SPRITE`.
+- The EBOOT is a **Konami arcade emulator** (SEGA-Vintage/M2 wrapper) running the original 1991
+  coin-op romset. We recompile the *emulator*; the game's 6809 code is interpreted from the ROM.
+
+**Phase 5 — NID resolution (COMPLETE)**
+- `prx_analyzer.py` returned 0 (it expects a PRX dynamic section; this is an ET_EXEC EBOOT).
+- Parsed the `sys_proc_prx_param` lib.stub tables directly → **20 libraries, 256 imported functions**
+  (`imports.json`). Verified NID algorithm against the binary (`_cellGcmInitBody` = `0x15BAE46B`).
+- Core path: cellGcmSys (22), cellAudio (12), sys_io (5), sys_fs (15), cellSysutil (19),
+  cellSysmodule (2), sysPrxForUser (20), cellGame (5), cellRtc (2), cellSpurs (9).
+- Stub for first playable: sceNp/sceNp2/sceNpTrophy/sceNpCommerce2 (79), sys_net (14),
+  cellNetCtl (6), cellSysutilAvc2 (9), cellUserInfo (1), cellSail (28), cellAtrac (8).
+
+**Phase 6 — First lift (COMPLETE)**
+- `ppu_lifter.py game/EBOOT.elf --functions analysis_functions.json` →
+  **17,397 functions lifted** (14,754 + 2,643 mid-function tail-entry wrappers), 2,265 call targets.
+- Output: `src/recomp/ppu_recomp.cpp` (119 MB), `ppu_recomp.h` (719 KB). (git-ignored)
+- **Instruction coverage:** 4,784 TODOs. Real unhandled ops are few and known —
+  `stfiwx` (532), op63 double-precision FP (247), `cntlzd` (21), `mulhdu` (3). The remaining
+  3,981 are opcode-0 `.word` (data/padding misclassified as code — harmless). This is the same
+  "missing instructions" class the 360 build patched; add ~4 handlers to `ppu_lifter`.
+
 ---
 
 ## Next steps
-1. **Resolve import NIDs** (`prx_analyzer.py`, `nid_database.py`); diff against `flOw`'s 140-NID map.
-   Expect a small subset (cellGcmSys, cellAudio, cellPad, cellFs, cellSysutil/Sysmodule,
-   sysPrxForUser, sceNpTrophy/cellGame).
-2. **First `ppu_lifter` pass** via `tools/recompile.py`; verify the 360's "21 missing instructions"
-   are covered by ps3recomp's lifter.
-3. **Apply the 360 speed-fix early** (timebase scaling for the PPE `mftb`).
-4. **Use the 360 lifted source as an oracle** for the arcade-core functions.
+1. **Add the missing PPC handlers** to `ps3recomp/tools/ppu_lifter.py`: `stfiwx`, `cntlzd`,
+   `mulhdu`, op63 FP conversions (`fctid(z)`, `fcfid`, etc.). Cross-check the 360 patch.
+2. **Re-lift** and confirm TODO count drops to ~the opcode-0 data words only.
+3. **Scaffold the runtime** (`src/main.cpp`, `elf_loader`, `hle_modules`, `import_stubs`,
+   `func_table`, `malloc_override`) from the `flOw` port; wire the 10 core HLE modules.
+4. **Link** against ps3recomp and chase first boot → CRT init → emulator ROM load.
+5. **Apply the 360 speed-fix early** (timebase scaling for the PPE `mftb`).
 
 ## Open questions
 1. How many functions does the PS3 EBOOT lift to vs. the 360's 15,237?

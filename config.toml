@@ -13,18 +13,31 @@ func_prefix = "recomp_"
 generate_func_table = true
 
 [modules]
-# Expected subset for a small arcade title (confirm after NID resolution).
-# Mark each "hle" to use ps3recomp's host implementation.
-cellGcmSys    = "hle"
-cellSysutil   = "hle"
-cellSysmodule = "hle"
-sysPrxForUser = "hle"
-cellAudio     = "hle"
-sys_io        = "hle"   # cellPad / cellKb / cellMouse
-sys_fs        = "hle"
-cellGame      = "hle"
-sceNpTrophy   = "hle"
-sceNp         = "hle"
+# Actual import set parsed from the EBOOT sys_proc_prx_param lib.stub tables:
+# 20 libraries, 256 functions. (See imports.json / docs/emulator-architecture.md.)
+# "hle" = use ps3recomp host implementation. Core path = graphics/audio/input/fs.
+cellGcmSys     = "hle"   # 22 — RSX: emulator framebuffer -> GPU
+cellAudio      = "hle"   # 12 — emulated sound chips -> PCM out
+sys_io         = "hle"   #  5 — cellPad input
+sys_fs         = "hle"   # 15 — loads SIMPSONS.SR / SIMPSONS_FW.SR
+cellSysutil    = "hle"   # 19 — system params, video out, callbacks
+cellSysmodule  = "hle"   #  2 — module load/unload
+sysPrxForUser  = "hle"   # 20 — TLS, lwmutex, threads, process exit
+cellGame       = "hle"   #  5 — content/boot path
+cellRtc        = "hle"   #  2 — clock
+cellSpurs      = "hle"   #  9 — SPU task mgmt (likely incidental for the core)
+# --- front-end media: stub initially, wire later for movies/music ---
+cellSail       = "stub"  # 28 — video playback (attract/intro movie)
+cellAtrac      = "stub"  #  8 — ATRAC3 audio decode
+# --- online / PSN: stub for offline single-machine play ---
+sceNp          = "stub"  # 37
+sceNp2         = "stub"  # 27
+sceNpTrophy    = "stub"  # 13 — trophies (NPWR01444_00)
+sceNpCommerce2 = "stub"  #  2
+cellNetCtl     = "stub"  #  6
+sys_net        = "stub"  # 14
+cellUserInfo   = "stub"  #  1
+cellSysutilAvc2 = "stub" #  9 — voice chat
 
 [memory]
 main_ram_mb = 256

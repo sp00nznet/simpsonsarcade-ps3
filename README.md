@@ -32,9 +32,12 @@ The plan: steal everything we learned over there and point it at the Cell.
 | **Players** | Homer, Marge, Bart & Lisa (1–4 player co-op) |
 
 Under the hood, the PSN/XBLA release is an **arcade-emulator wrapper**: the original 1991 coin-op
-ROM lives inside the `SIMPSONS.SR` data archive, and the EBOOT emulates the arcade hardware around
-it (the same architectural trick the Genesis-on-XBLA ports like Comix Zone use). That means **the
-interesting bytes are nearly platform-independent** — see the cross-reference notes below.
+ROM lives inside the `SIMPSONS.SR` data archive (we can see the romset manifest —
+`Simpsons_4J.KON`, `..._TILES/SPRITES/SOUND/SAMPLES.ROM`), and the EBOOT emulates the arcade
+hardware around it — Konami 052001 (6809) + Z80 + `YM2151` + K053260, all named right in the
+binary. Same architectural trick as the Genesis-on-XBLA ports like Comix Zone. **We recompile the
+emulator; the game's 6809 code just gets interpreted from the ROM** — which is why the
+already-working 360 build is such a strong oracle. See [`docs/emulator-architecture.md`](docs/emulator-architecture.md).
 
 ---
 
@@ -48,9 +51,10 @@ interesting bytes are nearly platform-independent** — see the cross-reference 
 | 360 ↔ PS3 cross-reference | ✅ Done — see [`docs/360-crossref.md`](docs/360-crossref.md) |
 | Decrypt EBOOT.BIN (SELF → ELF) | ✅ Done — `rpcs3 --decrypt` (no RAP needed) |
 | Function discovery | ✅ Done — **14,754 functions** (vs 360's 15,237 — 96.8%) |
-| Import / NID resolution | 🔜 Next |
-| PPU lift (ppu_lifter → C++) | ⬜ Not started |
-| Runtime link against ps3recomp | ⬜ Not started |
+| It's an arcade emulator! | ✅ Confirmed — ROM names, `YM2151`, `z80`, sprite engine in the EBOOT |
+| Import / NID resolution | ✅ Done — **20 libs, 256 funcs** (`imports.json`) |
+| PPU lift (ppu_lifter → C++) | ✅ Done — **17,397 funcs, 119 MB**; ~4 missing ops to patch |
+| Runtime link against ps3recomp | 🔜 Next |
 | Reach `main()` / CRT init | ⬜ Not started |
 | Arcade core running | ⬜ Not started |
 | Graphics (RSX → D3D12) | ⬜ Not started |
