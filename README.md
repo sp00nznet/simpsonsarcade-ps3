@@ -56,7 +56,8 @@ already-working 360 build is such a strong oracle. See [`docs/emulator-architect
 | PPU lift (ppu_lifter → C++) | ✅ Done — **17,397 funcs, 119 MB** |
 | Instruction coverage | ✅ Done — patched lifter; **0 real-instruction TODOs** remain |
 | Runtime scaffold | ✅ Done — main/loader/bridge/HLE + generator (parses clean) |
-| Build & link against ps3recomp | 🔜 Next |
+| Build & link against ps3recomp | ✅ Done — **`simpsons.exe` (17.9 MB)** builds |
+| First boot (recompiled CRT runs) | ✅ Reached — executes guest CRT; CRT bring-up next |
 | Reach `main()` / CRT init | ⬜ Not started |
 | Arcade core running | ⬜ Not started |
 | Graphics (RSX → D3D12) | ⬜ Not started |

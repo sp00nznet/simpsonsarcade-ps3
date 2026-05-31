@@ -20,6 +20,15 @@ extern "C" const size_t         g_recompiled_func_count;
 /* Defined here (declared extern in guest_call.h); set in main. */
 extern "C" ps3_guest_caller_fn g_ps3_guest_caller = nullptr;
 
+/* Thread-local trampoline pointer for split-function cross-fragment
+ * fallthrough. The lifter declares this extern and drains it via
+ * DRAIN_TRAMPOLINE after every call; we own the definition. */
+#if defined(_MSC_VER)
+extern "C" __declspec(thread) void (*g_trampoline_fn)(void*) = nullptr;
+#else
+extern "C" thread_local void (*g_trampoline_fn)(void*) = nullptr;
+#endif
+
 static std::unordered_map<uint32_t, void(*)(void*)>& table() {
     static std::unordered_map<uint32_t, void(*)(void*)> m;
     if (m.empty()) {

@@ -12,7 +12,8 @@
 | 5. NID resolve | Import table → library/function names | ✅ Complete — 20 libs, 256 funcs |
 | 6. Lift | ppu_lifter → C++ | ✅ Complete — 17,397 funcs, 119 MB |
 | 7. Runtime scaffold | main/loader/bridge/HLE + generator | ✅ Complete |
-| 8. Link | Build against ps3recomp runtime | 🔜 Next |
+| 8. Build & link | Compile 119 MB + link ps3recomp runtime | ✅ Complete — `simpsons.exe` (17.9 MB) |
+| 9. First boot | Enter recompiled CRT | ✅ Reached — runs to CRT, null call next |
 | 8. Boot | Reach main() / CRT init | ⬜ |
 | 9. Arcade core | Mount SIMPSONS.SR, run emulator core | ⬜ |
 | 10. GPU/Audio/Input | RSX→D3D12, cellAudio, cellPad | ⬜ |
@@ -92,6 +93,19 @@
 **Toolchain patch upstreamed**
 - Merged to `sp00nznet/ps3recomp` master via PR #2.
 
+**Phase 8/9 — First build + boot (DONE 2026-05-31)**
+- Reconciled the lifter's three symbol sets via `tools/gen_runtime.py` (header patch +
+  `missing_stubs.cpp`) so all 18,628 `func_<addr>` resolve.
+- MSVC fixes: added a `__builtin_clzll` polyfill to the lifter preamble (MSVC lacks it; pairs with
+  the existing `__builtin_clz` one); defined the thread-local `g_trampoline_fn` (split-function
+  fallthrough pointer) in `indirect_dispatch.cpp`.
+- **The 119 MB `ppu_recomp.cpp` compiles** (single TU, `/bigobj`) and links against
+  `ps3recomp_runtime.lib` → **`simpsons.exe` (17.9 MB)**.
+- **First boot:** loads ELF segments, resolves entry OPD `0x186900` → code `0x00010230` /
+  TOC `0x001913A8`, and executes the recompiled CRT. Stops at a null indirect call — next up is
+  CRT bring-up (set `lr` to the `sys_process_exit` stub, prime TLS + heap, run constructors),
+  mirroring the flОw sequence.
+
 **Phase 7 — Runtime scaffold (COMPLETE)**
 - Hand-written runtime (clean, no game-specific hacks — all parse under clang++ `-fsyntax-only`):
   - `src/config.h` — Simpsons constants (entry OPD 0x186900, text/data bases, heap region).
@@ -110,10 +124,11 @@
 ---
 
 ## Next steps
-1. **Build the ps3recomp runtime** lib, then `cmake -B build` + compile (119 MB of recomp C++).
+1. **CRT bring-up** — set `ctx.lr` to the `sys_process_exit` import stub, prime TLS (`r13`) and the
+   CRT heap, run static constructors. Chase past the first null indirect call.
 2. **Import redirection** — post-lift pass to rewrite the 207 lifted import-stub bodies to call
    `simpsons_hle()` (direct `bl` calls; indirect `bctrl` already route via the func table).
-3. **Chase first boot** → CRT init → mount `0B/SIMPSONS.SR` → arcade core.
+3. **Reach `main()`** → mount `0B/SIMPSONS.SR` → arcade-emulator core init.
 4. **Bridge the core HLE libs** (cellGcmSys/RSX, cellAudio, sys_io, sys_fs) as the trace demands.
 5. **Apply the 360 speed-fix** (timebase scaling for the PPE `mftb`).
 
