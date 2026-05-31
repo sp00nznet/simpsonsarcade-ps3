@@ -1,0 +1,121 @@
+diff --git a/tools/ppu_disasm.py b/tools/ppu_disasm.py
+index 78e6d15..a8c6c33 100644
+--- a/tools/ppu_disasm.py
++++ b/tools/ppu_disasm.py
+@@ -495,7 +495,7 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+             40: "subf", 8: "subfc", 136: "subfe",
+             235: "mullw", 75: "mulhw", 11: "mulhwu",
+             491: "divw", 459: "divwu",
+-            233: "mulld", 73: "mulhd",
++            233: "mulld", 73: "mulhd", 9: "mulhdu",
+             489: "divd", 457: "divdu",
+         }
+         if xo_9 in xo_arith_2op:
+@@ -583,6 +583,7 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+             599: ("lfdx", False), 631: ("lfdux", False),
+             663: ("stfsx", False), 695: ("stfsux", False),
+             727: ("stfdx", False), 759: ("stfdux", False),
++            983: ("stfiwx", False),
+         }
+         if xo_full in x_ldst:
+             mne, has_dot = x_ldst[xo_full]
+@@ -789,7 +790,7 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+         fp_a = {
+             21: "fadd", 20: "fsub", 25: "fmul", 18: "fdiv",
+             29: "fmadd", 28: "fmsub", 31: "fnmadd", 30: "fnmsub",
+-            23: "fsel", 22: "fsqrt",
++            23: "fsel", 22: "fsqrt", 26: "frsqrte", 24: "fre",
+         }
+         if xo_5 in fp_a:
+             mne = fp_a[xo_5]
+@@ -802,6 +803,8 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+                 result.operands = f"f{frd}, f{fra}, f{frc}, f{frb}"
+             elif xo_5 == 23:  # fsel
+                 result.operands = f"f{frd}, f{fra}, f{frc}, f{frb}"
++            elif xo_5 in (26, 24):  # frsqrte / fre: frd, frb
++                result.operands = f"f{frd}, f{frb}"
+             else:
+                 result.operands = f"f{frd}, f{fra}, f{frb}"
+             return result
+@@ -809,7 +812,7 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+         fp_x = {
+             0: "fcmpu", 32: "fcmpo",
+             12: "frsp", 14: "fctiw", 15: "fctiwz",
+-            846: "fctid", 847: "fctidz", 814: "fcfid",
++            814: "fctid", 815: "fctidz", 846: "fcfid",
+             40: "fneg", 72: "fmr", 264: "fabs", 136: "fnabs",
+             64: "mcrfs",
+             583: "mffs", 711: "mtfsf",
+@@ -843,7 +846,7 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+         rc = bit(insn, 31)
+         fps = {21: "fadds", 20: "fsubs", 25: "fmuls", 18: "fdivs",
+                29: "fmadds", 28: "fmsubs", 31: "fnmadds", 30: "fnmsubs",
+-               22: "fsqrts", 24: "fres"}
++               22: "fsqrts", 24: "fres", 26: "frsqrtes"}
+         if xo_5 in fps:
+             mne = fps[xo_5]
+             if rc:
+@@ -853,6 +856,8 @@ def decode(insn: int, addr: int = 0) -> Instruction:
+                 result.operands = f"f{frd}, f{fra}, f{frc}"
+             elif xo_5 in (29, 28, 31, 30):
+                 result.operands = f"f{frd}, f{fra}, f{frc}, f{frb}"
++            elif xo_5 in (24, 26):  # fres / frsqrtes: frd, frb
++                result.operands = f"f{frd}, f{frb}"
+             else:
+                 result.operands = f"f{frd}, f{fra}, f{frb}"
+             return result
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index 648ceb1..d788845 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -388,6 +388,11 @@ class PPULifter:
+             ra, rs = _reg_idx(ops[0]), _reg_idx(ops[1])
+             return f"ctx->gpr[{ra}] = __builtin_clz((uint32_t)ctx->gpr[{rs}]);"
+ 
++        if mn in ("cntlzd", "cntlzd."):
++            ra, rs = _reg_idx(ops[0]), _reg_idx(ops[1])
++            return (f"ctx->gpr[{ra}] = ctx->gpr[{rs}] ? "
++                    f"__builtin_clzll(ctx->gpr[{rs}]) : 64;")
++
+         # ------- Shift / Rotate -------
+         if mn.startswith("rlwinm"):
+             ra, rs = _reg_idx(ops[0]), _reg_idx(ops[1])
+@@ -559,6 +564,12 @@ class PPULifter:
+             else:
+                 return f"{{ uint64_t tmp; memcpy(&tmp, &ctx->fpr[{frs}], 8); vm_write64({ea}, tmp); }}"
+ 
++        if mn == "stfiwx":
++            # Store the low 32 bits of the FPR's raw contents as an integer word.
++            frs, ra_i, rb_i = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2])
++            ea = f"(ctx->gpr[{ra_i}] + ctx->gpr[{rb_i}])" if ra_i != "0" else f"ctx->gpr[{rb_i}]"
++            return f"{{ uint64_t tmp; memcpy(&tmp, &ctx->fpr[{frs}], 8); vm_write32({ea}, (uint32_t)tmp); }}"
++
+         # ------- Compare -------
+         if mn in ("cmpwi", "cmpdi"):
+             # ops: [crN,] rA, imm  or  rA, imm
+@@ -804,7 +815,7 @@ class PPULifter:
+             frb = _reg_idx(ops[1])
+             return f"ctx->fpr[{frd}] = (float)ctx->fpr[{frb}];"
+ 
+-        if mn_base in ("fctiwz",):
++        if mn_base in ("fctiw", "fctiwz"):
+             frd = _reg_idx(ops[0])
+             frb = _reg_idx(ops[1])
+             return (f"{{ int32_t iv = (int32_t)ctx->fpr[{frb}]; uint64_t tmp; "
+@@ -829,6 +840,16 @@ class PPULifter:
+             frb = _reg_idx(ops[1])
+             return f"ctx->fpr[{frd}] = sqrt(ctx->fpr[{frb}]);"
+ 
++        if mn_base in ("frsqrte", "frsqrtes"):
++            frd = _reg_idx(ops[0])
++            frb = _reg_idx(ops[1])
++            return f"ctx->fpr[{frd}] = 1.0 / sqrt(ctx->fpr[{frb}]);"
++
++        if mn_base in ("fre", "fres"):
++            frd = _reg_idx(ops[0])
++            frb = _reg_idx(ops[1])
++            return f"ctx->fpr[{frd}] = 1.0 / ctx->fpr[{frb}];"
++
+         if mn_base == "fsel":
+             frd, fra, frc, frb = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2]), _reg_idx(ops[3])
+             return f"ctx->fpr[{frd}] = (ctx->fpr[{fra}] >= 0.0) ? ctx->fpr[{frc}] : ctx->fpr[{frb}];"

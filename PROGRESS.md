@@ -74,21 +74,28 @@
 - `ppu_lifter.py game/EBOOT.elf --functions analysis_functions.json` →
   **17,397 functions lifted** (14,754 + 2,643 mid-function tail-entry wrappers), 2,265 call targets.
 - Output: `src/recomp/ppu_recomp.cpp` (119 MB), `ppu_recomp.h` (719 KB). (git-ignored)
-- **Instruction coverage:** 4,784 TODOs. Real unhandled ops are few and known —
-  `stfiwx` (532), op63 double-precision FP (247), `cntlzd` (21), `mulhdu` (3). The remaining
-  3,981 are opcode-0 `.word` (data/padding misclassified as code — harmless). This is the same
-  "missing instructions" class the 360 build patched; add ~4 handlers to `ppu_lifter`.
+- **Instruction coverage (first pass):** 4,784 TODOs. Real unhandled ops were few and known —
+  `stfiwx` (532), op63 FP (247 incl. data), `cntlzd` (21), `mulhdu` (3) — same class the 360 patched.
+
+**Phase 6b — Patch toolchain + re-lift (COMPLETE)**
+- Patched `ps3recomp/tools/ppu_disasm.py` + `ppu_lifter.py`
+  (`tools/patches/ps3recomp-missing-ppc-instructions.patch`):
+  - disasm: `mulhdu` (xo=9), `stfiwx` (xo=983), `frsqrte`/`fre`/`frsqrtes`, and **fixed a real bug**
+    where op63 conversions were mis-tabled (`846/847/814` → corrected to `814/815/846`), which had
+    silently *swapped* `fctid`/`fcfid` and dropped `fctidz`.
+  - lifter: `cntlzd`, `stfiwx`, `fctiw`, `frsqrte`/`frsqrtes`, `fre`/`fres`.
+- Re-lift: TODOs **4,784 → 4,192**, and **0 real-instruction TODOs remain** — every one of the
+  4,192 left is a `.word` data constant (opcode-0 padding / jump-table data misclassified as code,
+  never executed). Instruction coverage for actual code is effectively complete.
 
 ---
 
 ## Next steps
-1. **Add the missing PPC handlers** to `ps3recomp/tools/ppu_lifter.py`: `stfiwx`, `cntlzd`,
-   `mulhdu`, op63 FP conversions (`fctid(z)`, `fcfid`, etc.). Cross-check the 360 patch.
-2. **Re-lift** and confirm TODO count drops to ~the opcode-0 data words only.
-3. **Scaffold the runtime** (`src/main.cpp`, `elf_loader`, `hle_modules`, `import_stubs`,
-   `func_table`, `malloc_override`) from the `flOw` port; wire the 10 core HLE modules.
-4. **Link** against ps3recomp and chase first boot → CRT init → emulator ROM load.
-5. **Apply the 360 speed-fix early** (timebase scaling for the PPE `mftb`).
+1. **Scaffold the runtime** (`src/main.cpp`, `elf_loader`, `hle_modules`, `import_stubs`,
+   `func_table`, `malloc_override`) from the `flОw` port; wire the 10 core HLE modules.
+2. **Link** against ps3recomp and chase first boot → CRT init → emulator ROM load (`0B/SIMPSONS.SR`).
+3. **Apply the 360 speed-fix early** (timebase scaling for the PPE `mftb`).
+4. **Upstream** the toolchain patch to the ps3recomp repo (benefits flОw / Tokyo Jungle too).
 
 ## Open questions
 1. How many functions does the PS3 EBOOT lift to vs. the 360's 15,237?

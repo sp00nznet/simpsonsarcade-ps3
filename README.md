@@ -53,7 +53,8 @@ already-working 360 build is such a strong oracle. See [`docs/emulator-architect
 | Function discovery | ✅ Done — **14,754 functions** (vs 360's 15,237 — 96.8%) |
 | It's an arcade emulator! | ✅ Confirmed — ROM names, `YM2151`, `z80`, sprite engine in the EBOOT |
 | Import / NID resolution | ✅ Done — **20 libs, 256 funcs** (`imports.json`) |
-| PPU lift (ppu_lifter → C++) | ✅ Done — **17,397 funcs, 119 MB**; ~4 missing ops to patch |
+| PPU lift (ppu_lifter → C++) | ✅ Done — **17,397 funcs, 119 MB** |
+| Instruction coverage | ✅ Done — patched lifter; **0 real-instruction TODOs** remain |
 | Runtime link against ps3recomp | 🔜 Next |
 | Reach `main()` / CRT init | ⬜ Not started |
 | Arcade core running | ⬜ Not started |
