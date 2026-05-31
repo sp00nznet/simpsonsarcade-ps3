@@ -1,0 +1,56 @@
+# The Simpsons Arcade Game (NPUB30563) — ps3recomp configuration
+#
+# Used by: python tools/recompile.py --config config.toml
+# Modeled on flow/config.toml; module list will be trimmed once NIDs are resolved.
+
+[input]
+elf_path = "game/EBOOT.elf"     # produced by decrypting USRDIR/EBOOT.BIN
+sfo_path = "extracted/PARAM.SFO"
+
+[output]
+output_dir = "src/recomp/"
+func_prefix = "recomp_"
+generate_func_table = true
+
+[modules]
+# Expected subset for a small arcade title (confirm after NID resolution).
+# Mark each "hle" to use ps3recomp's host implementation.
+cellGcmSys    = "hle"
+cellSysutil   = "hle"
+cellSysmodule = "hle"
+sysPrxForUser = "hle"
+cellAudio     = "hle"
+sys_io        = "hle"   # cellPad / cellKb / cellMouse
+sys_fs        = "hle"
+cellGame      = "hle"
+sceNpTrophy   = "hle"
+sceNp         = "hle"
+
+[memory]
+main_ram_mb = 256
+vram_mb = 256
+thread_stack_kb = 1024
+
+[threading]
+max_ppu_threads = 64
+max_spu_threads = 6
+use_host_threads = true
+
+[graphics]
+backend = "d3d12"
+width = 1280
+height = 720
+vsync = "on"
+scale_factor = 1
+
+[audio]
+backend = "wasapi"
+sample_rate = 48000
+buffer_size = 512
+
+[debug]
+log_hle_calls = true
+log_missing_nids = true
+break_on_unimplemented = false
+dump_disassembly = false
+breakpoint_address = 0
