@@ -60,10 +60,20 @@ PT_LOAD #2 data is high-entropy). Decryption required before lifting.
 - **Data/BSS**: `0x00180000` … `0x00241560` (filesz `0x1A804`, rest BSS)
 - Same `0x10000` text base as the `flOw` port — standard PS3 user ELF layout.
 
+## Decryption (done)
+
+`rpcs3 --decrypt game/EBOOT.BIN` → `game/EBOOT.elf` (1,626,488 B). RPCS3's built-in retail keys
+(key rev `0x16`) decrypt the NPDRM SELF with no RAP required, and emit a fully reconstructed ELF
+with 29 section headers. Parses cleanly with `ps3recomp/tools/elf_parser.py`.
+
+## Function discovery (done)
+
+`ps3recomp/tools/find_functions.py game/EBOOT.elf` → **14,754 functions** (`analysis_functions.json`),
+vs. the 360 build's 15,237 (96.8%).
+
 ## Next steps
-1. Decrypt SELF → `game/EBOOT.elf` (RPCS3 / `ps3sce`).
-2. `python ../../ps3/tools/elf_parser.py` for sections/segments/OPD/TOC.
-3. `find_functions.py` (OPD + heuristic) → function table; compare with 360's 15,237.
-4. `prx_analyzer.py` + `nid_database.py` → resolve import NIDs.
+1. `prx_analyzer.py` + `nid_database.py` → resolve import NIDs; diff vs `flOw`'s 140-NID map.
+2. First `ppu_lifter` pass via `tools/recompile.py --config config.toml`.
+3. Verify the 360's "21 missing PPC instructions" are covered by ps3recomp's lifter.
 
 See [`360-crossref.md`](360-crossref.md) for how the 360 build informs every step.

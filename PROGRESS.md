@@ -6,10 +6,10 @@
 |---|---|---|
 | 0. Recon | Find PKG, confirm same game as 360, cross-reference | ✅ Complete |
 | 1. Extract | Unpack PSN PKG → EBOOT.BIN + game data | ✅ Complete |
-| 2. Analysis | SELF/ELF structural analysis | ✅ Complete (pre-decrypt) |
-| 3. Decrypt | EBOOT.BIN (SELF) → EBOOT.elf | 🔜 Next |
-| 4. Disasm/find | OPD + heuristic function discovery | ⬜ |
-| 5. NID resolve | Import table → library/function names | ⬜ |
+| 2. Analysis | SELF/ELF structural analysis | ✅ Complete |
+| 3. Decrypt | EBOOT.BIN (SELF) → EBOOT.elf | ✅ Complete |
+| 4. Disasm/find | OPD + heuristic function discovery | ✅ Complete — 14,754 functions |
+| 5. NID resolve | Import table → library/function names | 🔜 Next |
 | 6. Lift | ppu_lifter → C++ | ⬜ |
 | 7. Link | Build against ps3recomp runtime | ⬜ |
 | 8. Boot | Reach main() / CRT init | ⬜ |
@@ -44,14 +44,27 @@
   (memsz `0xC1560`). Segment payloads are encrypted.
 - Full notes in [`docs/binary-analysis.md`](docs/binary-analysis.md).
 
+**Phase 3 — Decrypt (COMPLETE)**
+- Decrypted `EBOOT.BIN` → `game/EBOOT.elf` (1,626,488 B) with `rpcs3 --decrypt`.
+  No RAP needed — RPCS3's built-in key-rev-`0x16` keys handled the retail NPDRM SELF directly.
+- RPCS3 emitted a fully reconstructed ELF (29 section headers) — parses cleanly with
+  `ps3recomp/tools/elf_parser.py`. Entry `0x186900`, text PT_LOAD @ `0x10000` confirmed.
+
+**Phase 4 — Function discovery (COMPLETE)**
+- `ps3recomp/tools/find_functions.py` found **14,754 functions** (`analysis_functions.json`).
+- vs. the 360 build's **15,237** functions — **96.8% overlap in count**. Strong confirmation it's
+  the same codebase: same arcade core, slightly tighter PS3 toolchain output.
+
 ---
 
 ## Next steps
-1. **Decrypt EBOOT.BIN** → `game/EBOOT.elf` (RPCS3 "Decrypt PS3 binaries", or `ps3sce`/scetool with
-   retail keys). The `GAMEDATA1.EDAT` will additionally need the RAP/klicensee if used.
-2. Run `../../ps3/tools/elf_parser.py` + `find_functions.py`; compare function count to 360's 15,237.
-3. Resolve import NIDs (`prx_analyzer.py`, `nid_database.py`); diff against `flOw`'s 140-NID map.
-4. First `ppu_lifter` pass; verify the 360's "21 missing instructions" are covered.
+1. **Resolve import NIDs** (`prx_analyzer.py`, `nid_database.py`); diff against `flOw`'s 140-NID map.
+   Expect a small subset (cellGcmSys, cellAudio, cellPad, cellFs, cellSysutil/Sysmodule,
+   sysPrxForUser, sceNpTrophy/cellGame).
+2. **First `ppu_lifter` pass** via `tools/recompile.py`; verify the 360's "21 missing instructions"
+   are covered by ps3recomp's lifter.
+3. **Apply the 360 speed-fix early** (timebase scaling for the PPE `mftb`).
+4. **Use the 360 lifted source as an oracle** for the arcade-core functions.
 
 ## Open questions
 1. How many functions does the PS3 EBOOT lift to vs. the 360's 15,237?

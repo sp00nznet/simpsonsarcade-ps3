@@ -46,8 +46,9 @@ interesting bytes are nearly platform-independent** — see the cross-reference 
 | Confirm it's the same game as the 360 build | ✅ Done — `SIMPSONS.SR` is **byte-identical** (2,748,416 B) |
 | ELF / SELF structural analysis | ✅ Done — PPC64 BE, entry `0x186900`, text @ `0x10000` |
 | 360 ↔ PS3 cross-reference | ✅ Done — see [`docs/360-crossref.md`](docs/360-crossref.md) |
-| Decrypt EBOOT.BIN (SELF → ELF) | 🔜 Next — retail NPDRM, key rev `0x16` |
-| Import / NID resolution | ⬜ Not started |
+| Decrypt EBOOT.BIN (SELF → ELF) | ✅ Done — `rpcs3 --decrypt` (no RAP needed) |
+| Function discovery | ✅ Done — **14,754 functions** (vs 360's 15,237 — 96.8%) |
+| Import / NID resolution | 🔜 Next |
 | PPU lift (ppu_lifter → C++) | ⬜ Not started |
 | Runtime link against ps3recomp | ⬜ Not started |
 | Reach `main()` / CRT init | ⬜ Not started |

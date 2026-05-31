@@ -57,7 +57,7 @@ verify in ps3recomp's lifter for this binary.
 | Entry point | `0x8214DB50` | `0x00186900` |
 | `.text` | `0x820A0000`, size `0x237350` (~2.3 MB) | `0x10000`, filesz `0x1628E8` (~1.45 MB) |
 | Data/BSS | `.data` @ `0x822E0000` | PT_LOAD2 @ `0x180000`, memsz `0xC1560` |
-| Functions | **15,237** (XenonRecomp) | TBD (post-decrypt; expect a similar order) |
+| Functions | **15,237** (XenonRecomp) | **14,754** (ps3recomp `find_functions`) — **96.8%** |
 | ABI helpers | save/rest gpr/fpr/vmx @ `0x8225xxxx` | TBD (ps3recomp detects via OPD) |
 
 The PS3 code section is smaller (~1.45 MB vs ~2.3 MB). Expected: the 360 image bundles more
