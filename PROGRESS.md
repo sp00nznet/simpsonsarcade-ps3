@@ -11,7 +11,8 @@
 | 4. Disasm/find | OPD + heuristic function discovery | ✅ Complete — 14,754 functions |
 | 5. NID resolve | Import table → library/function names | ✅ Complete — 20 libs, 256 funcs |
 | 6. Lift | ppu_lifter → C++ | ✅ Complete — 17,397 funcs, 119 MB |
-| 7. Link | Build against ps3recomp runtime | 🔜 Next |
+| 7. Runtime scaffold | main/loader/bridge/HLE + generator | ✅ Complete |
+| 8. Link | Build against ps3recomp runtime | 🔜 Next |
 | 8. Boot | Reach main() / CRT init | ⬜ |
 | 9. Arcade core | Mount SIMPSONS.SR, run emulator core | ⬜ |
 | 10. GPU/Audio/Input | RSX→D3D12, cellAudio, cellPad | ⬜ |
@@ -88,14 +89,33 @@
   4,192 left is a `.word` data constant (opcode-0 padding / jump-table data misclassified as code,
   never executed). Instruction coverage for actual code is effectively complete.
 
+**Toolchain patch upstreamed**
+- Merged to `sp00nznet/ps3recomp` master via PR #2.
+
+**Phase 7 — Runtime scaffold (COMPLETE)**
+- Hand-written runtime (clean, no game-specific hacks — all parse under clang++ `-fsyntax-only`):
+  - `src/config.h` — Simpsons constants (entry OPD 0x186900, text/data bases, heap region).
+  - `src/elf_loader.{h,cpp}` — maps PT_LOAD segments; exposes the entry OPD.
+  - `src/vm_bridge.cpp` — big-endian `vm_read*/vm_write*` over `vm_base` + LV2 syscall dispatch.
+  - `src/malloc_override.cpp` — guest bump allocator (wire to the emulator's malloc later).
+  - `src/indirect_dispatch.cpp` — `guest_addr -> host_func` map; `ps3_indirect_call`.
+  - `src/hle_modules.cpp` — `g_ps3_module_registry`, `simpsons_hle()` NID dispatch (core libs
+    routed, online/media stubbed), guest-callback trampoline.
+  - `src/main.cpp` — boot sequence: vm_init → load ELF → deref entry OPD → enter recompiled CRT.
+  - `CMakeLists.txt` — links the ps3recomp runtime (sibling `../../ps3`).
+- `tools/gen_runtime.py` generates (into `src/recomp/`, git-ignored):
+  - `func_table.cpp` — `g_recompiled_funcs[]` over all **18,114** lifted symbols.
+  - `import_stubs.cpp` — the **256**-entry import table {stub_addr, nid, lib, name}.
+
 ---
 
 ## Next steps
-1. **Scaffold the runtime** (`src/main.cpp`, `elf_loader`, `hle_modules`, `import_stubs`,
-   `func_table`, `malloc_override`) from the `flОw` port; wire the 10 core HLE modules.
-2. **Link** against ps3recomp and chase first boot → CRT init → emulator ROM load (`0B/SIMPSONS.SR`).
-3. **Apply the 360 speed-fix early** (timebase scaling for the PPE `mftb`).
-4. **Upstream** the toolchain patch to the ps3recomp repo (benefits flОw / Tokyo Jungle too).
+1. **Build the ps3recomp runtime** lib, then `cmake -B build` + compile (119 MB of recomp C++).
+2. **Import redirection** — post-lift pass to rewrite the 207 lifted import-stub bodies to call
+   `simpsons_hle()` (direct `bl` calls; indirect `bctrl` already route via the func table).
+3. **Chase first boot** → CRT init → mount `0B/SIMPSONS.SR` → arcade core.
+4. **Bridge the core HLE libs** (cellGcmSys/RSX, cellAudio, sys_io, sys_fs) as the trace demands.
+5. **Apply the 360 speed-fix** (timebase scaling for the PPE `mftb`).
 
 ## Open questions
 1. How many functions does the PS3 EBOOT lift to vs. the 360's 15,237?
