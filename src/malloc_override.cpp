@@ -34,6 +34,29 @@ extern "C" void hle_guest_malloc(ppu_context* ctx) {
 
 extern "C" void hle_guest_free(ppu_context* ctx) { (void)ctx; }
 
+/* realloc(ptr=r3, size=r4): allocate fresh and copy the old contents. We don't
+ * track block sizes (bump allocator), so copy a bounded amount — enough for the
+ * init-path reallocs that grow small buffers. */
+extern "C" void hle_guest_realloc(ppu_context* ctx) {
+    uint32_t old_ptr = (uint32_t)ctx->gpr[3];
+    uint32_t size    = (uint32_t)ctx->gpr[4];
+    if (size == 0) { ctx->gpr[3] = 0; return; }       /* realloc(p,0) == free */
+    ctx->gpr[3] = size;
+    hle_guest_malloc(ctx);                            /* sets gpr[3] = new ptr */
+    uint32_t new_ptr = (uint32_t)ctx->gpr[3];
+    if (new_ptr && old_ptr && vm_base) {
+        uint32_t cp = size < 0x10000 ? size : 0x10000;
+        memcpy(vm_base + new_ptr, vm_base + old_ptr, cp);
+    }
+}
+
+/* calloc(n=r3, size=r4): n*size bytes, zeroed (hle_guest_malloc already zeroes). */
+extern "C" void hle_guest_calloc(ppu_context* ctx) {
+    uint64_t n = (uint32_t)ctx->gpr[3], s = (uint32_t)ctx->gpr[4];
+    ctx->gpr[3] = (uint32_t)(n * s);
+    hle_guest_malloc(ctx);
+}
+
 extern "C" void hle_guest_malloc_reset(void) {
     if (vm_base) memset(vm_base + SIMPSONS_HEAP_BASE, 0,
                         SIMPSONS_HEAP_END - SIMPSONS_HEAP_BASE);

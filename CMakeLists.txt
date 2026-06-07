@@ -55,13 +55,23 @@ add_executable(simpsons
     src/elf_loader.cpp
     src/vm_bridge.cpp
     src/hle_modules.cpp
+    src/gcm_bridge.cpp
+    src/spurs_hle.cpp
     src/indirect_dispatch.cpp
     src/malloc_override.cpp
+    src/crash_handler.cpp
+    src/spu_runner.cpp
+    src/spu_runner_spurs.cpp
+    src/spu/spu_channels.c
+    src/spu/cri_job.c
+    src/spu/spurs_kernel.c
+    src/spu/spurs_policy.c
     ${RECOMP_SOURCES})
 
 target_include_directories(simpsons PRIVATE
     "${PS3RECOMP_DIR}/include"
     "${PS3RECOMP_DIR}"
+    "${PS3RECOMP_DIR}/runtime/spu"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp")
 

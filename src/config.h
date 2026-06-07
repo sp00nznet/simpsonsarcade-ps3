@@ -29,9 +29,24 @@
 #define SIMPSONS_DATA_FILESZ    0x0001A804
 #define SIMPSONS_DATA_MEMSZ     0x000C1560
 
-/* Memory layout */
+/* Memory layout (within the flat 256 MB guest space) ----------------------
+ *   0x00010000-0x001728E8  text + rodata
+ *   0x00180000-0x00241560  data + bss
+ *   0x00280000-0x00280110  main-thread TLS image (TP-0x7000)
+ *   0x00300000-0x009F0000  main-thread stack (grows down)
+ *   0x00A00000-0x10000000  HLE bump heap
+ */
 #define SIMPSONS_MAIN_MEM_SIZE  (256ULL * 1024 * 1024)  /* 256 MB XDR */
 #define SIMPSONS_STACK_SIZE     (64 * 1024 * 1024)
+#define SIMPSONS_STACK_TOP      0x009F0000
+
+/* PT_TLS template (from docs/binary-analysis.md): vaddr, filesz, memsz. */
+#define SIMPSONS_TLS_TEMPLATE   0x0018E35C
+#define SIMPSONS_TLS_FILESZ     0x00000004
+#define SIMPSONS_TLS_MEMSZ      0x00000110
+/* PPC64 ELF TLS: r13 (thread pointer) = image_base + 0x7000. */
+#define SIMPSONS_TLS_IMG        0x00280000
+#define SIMPSONS_TLS_TP         0x00287000
 
 /* Guest heap region for the HLE bump allocator (bypasses CRT malloc) */
 #define SIMPSONS_HEAP_BASE      0x00A00000
