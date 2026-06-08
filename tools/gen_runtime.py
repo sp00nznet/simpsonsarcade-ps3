@@ -32,6 +32,8 @@ DECL_RE = re.compile(r"void (func_[0-9A-Fa-f]{8})\(ppu_context\* ctx\);")
 DEF_RE = re.compile(r"^void (func_[0-9A-Fa-f]{8})\(ppu_context\* ctx\) \{")
 TOK_RE = re.compile(r"func_[0-9A-Fa-f]{8}")
 MARKER = "/* === gen_runtime.py: declarations for undeclared call targets === */"
+CRI_GATE_MARKER = "/* gen_runtime: CRI task-completion gate */"
+CRI_CONV_MARKER = "/* gen_runtime: CRI producer/consumer converge */"
 
 # The guest's Dinkumware allocator relies on OS heap init we don't reproduce,
 # so its malloc returns NULL and operator new throws std::bad_alloc during C++
@@ -161,6 +163,52 @@ def redirect_allocators():
     print(f"ppu_recomp.cpp: redirected {done} allocator(s) -> hle_guest_*")
 
 
+def patch_cri_completion():
+    """Re-apply the in-thread CRI task-completion primitives that let crCommandQueue
+    reach completion without the (not-yet-run) SPU consumer, so the boot is
+    deterministic and reaches render init. The lifter emits clean func_00130E24 /
+    loc_00130BDC; these inserts are dropped by a re-lift, so we reapply them here.
+
+    Two primitives:
+      (1) func_00130E24 — clear the per-task 0xC1 busy halfword (task+8) at entry,
+          so the task-completion gate passes (-> func_00130CB0 posts completion).
+      (2) loc_00130BDC  — converge the producer/consumer counters ([gpr28]==[gpr27])
+          in-thread at the exact check site (no cross-thread race).
+
+    Idempotent: skips if either the marker OR the primitive's functional signature
+    is already present (handles both a fresh re-lift and the legacy hand-edits)."""
+    text = open(SOURCE, "r", encoding="latin1").read()
+    have_gate = (CRI_GATE_MARKER in text or
+                 "vm_write32(task + 8, vm_read32(task + 8) & 0x0000FFFFu)" in text)
+    have_conv = (CRI_CONV_MARKER in text or
+                 "if (vm_read32(ca)!=pv) vm_write32(ca, pv)" in text)
+    if have_gate and have_conv:
+        print("ppu_recomp.cpp: CRI completion primitives already present — skipped")
+        return
+    gate_lines = [
+        "        " + CRI_GATE_MARKER,
+        "        { uint32_t task = (uint32_t)ctx->gpr[9];",
+        "          if (task >= 0x10000 && task < 0x10000000 && (vm_read32(task + 8) >> 16) == 0xC1)",
+        "              vm_write32(task + 8, vm_read32(task + 8) & 0x0000FFFFu); }",
+    ]
+    conv_lines = [
+        "        " + CRI_CONV_MARKER,
+        "        { uint32_t pa=(uint32_t)ctx->gpr[28], ca=(uint32_t)ctx->gpr[27];",
+        "          if (pa>=0x10000 && pa<0x10000000 && ca>=0x10000 && ca<0x10000000) {",
+        "              uint32_t pv=vm_read32(pa); if (vm_read32(ca)!=pv) vm_write32(ca, pv); } }",
+    ]
+    out, n_gate, n_conv = [], 0, 0
+    for ln in text.split("\n"):
+        out.append(ln)
+        s = ln.rstrip("\r")
+        if not have_gate and s == "void func_00130E24(ppu_context* ctx) {":
+            out.extend(gate_lines); n_gate += 1
+        elif not have_conv and s == "loc_00130BDC:":
+            out.extend(conv_lines); n_conv += 1
+    open(SOURCE, "w", encoding="latin1").write("\n".join(out))
+    print(f"ppu_recomp.cpp: CRI completion — inserted gate={n_gate}, converge sites={n_conv}")
+
+
 def patch_header(undeclared):
     text = open(HEADER, "r", encoding="latin1").read()
     if MARKER in text:
@@ -243,6 +291,7 @@ if __name__ == "__main__":
     patch_header(undeclared)
     redirect_import_stubs(lifted_imports)
     redirect_allocators()
+    patch_cri_completion()
     # trace_functions()  # (diagnostic; re-enable to trace specific funcs)
     gen_func_table(all_funcs)
     gen_import_stubs(imp, unlifted_imports)
