@@ -63,3 +63,6 @@ fp_dump.hlsl
 src/spu_gen/
 spu_dump/
 shot*.png
+
+# live-engine runtime scratch (present timing csv)
+scratch/
