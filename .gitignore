@@ -67,5 +67,6 @@ shot*.png
 # live-engine runtime scratch (present timing csv)
 scratch/
 
-# capture scratch
+# capture scratch from driving the game; README media is kept under docs/media
 *.png
+!docs/media/*.png
