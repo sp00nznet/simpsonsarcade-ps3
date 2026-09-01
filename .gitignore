@@ -66,3 +66,6 @@ shot*.png
 
 # live-engine runtime scratch (present timing csv)
 scratch/
+
+# capture scratch
+*.png
