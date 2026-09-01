@@ -14,6 +14,19 @@
 #   cmake --build build
 #   RSX_LIVE_DRAW=1 ./build/simpsons vfs/PS3_GAME/USRDIR/EBOOT.elf
 cmake_minimum_required(VERSION 3.20)
+
+# Default to Release.
+#
+# A recompiled title is one enormous generated translation unit -- 25 MB of C++
+# here -- and CMake+Ninja pick Debug when no type is given, which means /Od
+# /Ob0 /RTC1: no optimisation, no inlining, and MSVC runtime checks on every
+# frame. That measured 16 fps against 49 fps for the same code at /O2, and it
+# is invisible unless you look at build.ninja, because everything still works.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "build type" FORCE)
+endif()
+message(STATUS "build type: ${CMAKE_BUILD_TYPE}")
+
 project(simpsons CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
