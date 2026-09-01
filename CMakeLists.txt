@@ -26,7 +26,16 @@ set(PS3RECOMP_RUNTIME_LIB "${PS3RECOMP_DIR}/build/ps3recomp_runtime.lib"
 # Lifted game code + the generated HLE NID table (both git-ignored, regenerate
 # with tools/relift.sh).
 file(GLOB RECOMP_SOURCES "src/recomp/*.cpp")
-file(GLOB GEN_SOURCES    "src/gen/*.cpp")
+file(GLOB GEN_SOURCES    "src/gen/*.cpp" "src/gen/*.c")
+# The title's SPURS job binaries, lifted. These are raw job images the game
+# builds in main memory (not embedded SPU ELFs), captured with SPU_DUMP_MISS and
+# lifted under distinct symbol prefixes so both co-link. src/spu_workloads.c
+# registers them with the runtime's fingerprint registry.
+file(GLOB_RECURSE SPU_SOURCES "src/spu_gen/*.c")
+if(NOT SPU_SOURCES)
+    message(WARNING "src/spu_gen/ is empty -- the SPURS jobs will not dispatch "
+                    "and every draw will be rejected in get_pso. See tools/relift.sh")
+endif()
 if(NOT RECOMP_SOURCES)
     message(FATAL_ERROR "src/recomp/ is empty — run tools/relift.sh first")
 endif()
@@ -37,7 +46,9 @@ add_executable(simpsons
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"           # NID -> handler dispatch
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_sysprx.cpp"        # boot-critical CRT
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp"            # cellFs VFS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/spu_workloads.c"  # lifted SPURS jobs -> registry
     ${GEN_SOURCES}
+    ${SPU_SOURCES}
     ${RECOMP_SOURCES}
 )
 

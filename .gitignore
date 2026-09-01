@@ -58,3 +58,8 @@ vfs/
 # retired bespoke runtime, kept in git history; not built
 _attic/
 fp_dump.hlsl
+# Lifted SPU job images + the raw captures they come from. Both are derived
+# from the game binary -- regenerate with tools/relift.sh from your own dump.
+src/spu_gen/
+spu_dump/
+shot*.png
