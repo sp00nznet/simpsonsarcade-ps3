@@ -1,96 +1,62 @@
+# The Simpsons Arcade Game (NPUB30563, Backbone/Konami) — PPU boot harness.
+#
+# Rebuilt on the shared ps3recomp harness (was a bespoke runtime: elf_loader /
+# vm_bridge / hle_modules / gcm_bridge / indirect_dispatch, all superseded).
+# Same shape as flOw and Twisted Metal: load the real EBOOT -> register the
+# lifted functions + HLE NID handlers -> run real boot code, and every unlifted
+# function / unimplemented import / lv2 syscall logs itself.
+#
+# Graphics come from the harness: RSX_LIVE_DRAW=1 selects caner's (canersaka)
+# live NV4097 -> D3D12 draw engine, no code of our own.
+#
+# Toolchain: clang-cl (the harness uses __builtin_bswap + weak symbols MSVC lacks).
+#   cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+#   cmake --build build
+#   RSX_LIVE_DRAW=1 ./build/simpsons vfs/PS3_GAME/USRDIR/EBOOT.elf
 cmake_minimum_required(VERSION 3.20)
-project(simpsons_recomp
-    VERSION 0.1.0
-    LANGUAGES C CXX
-    DESCRIPTION "The Simpsons Arcade Game — static recompilation (NPUB30563)")
+project(simpsons CXX C)
 
-set(CMAKE_C_STANDARD 17)
-set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 17)
 
-# ---- game data dir (override with -DSIMPSONS_GAME_DIR_OPT=...) ----
-set(SIMPSONS_GAME_DIR_OPT "${CMAKE_CURRENT_SOURCE_DIR}/game" CACHE PATH
-    "Path to game data directory")
+set(PS3RECOMP_DIR "G:/recomp/ps3games/ps3recomp" CACHE PATH "ps3recomp repo root")
+set(PS3RECOMP_RUNTIME_LIB "${PS3RECOMP_DIR}/build/ps3recomp_runtime.lib"
+    CACHE FILEPATH "prebuilt runtime library")
 
-# ---- ps3recomp SDK location (sibling ../../ps3 by default) ----
-if(NOT DEFINED PS3RECOMP_DIR)
-    get_filename_component(PS3RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../ps3" ABSOLUTE)
-endif()
-message(STATUS "ps3recomp SDK: ${PS3RECOMP_DIR}")
-
-# Prefer a prebuilt runtime lib; otherwise build it from source.
-set(PS3RECOMP_RUNTIME_DIR "${PS3RECOMP_DIR}/build" CACHE PATH
-    "Directory containing the prebuilt ps3recomp_runtime library")
-set(_CANDS
-    "${PS3RECOMP_RUNTIME_DIR}/ps3recomp_runtime.lib"
-    "${PS3RECOMP_RUNTIME_DIR}/Release/ps3recomp_runtime.lib"
-    "${PS3RECOMP_RUNTIME_DIR}/Debug/ps3recomp_runtime.lib"
-    "${PS3RECOMP_RUNTIME_DIR}/libps3recomp_runtime.a")
-set(_FOUND "")
-foreach(_c ${_CANDS})
-    if(EXISTS "${_c}")
-        set(_FOUND "${_c}")
-        break()
-    endif()
-endforeach()
-if(_FOUND)
-    message(STATUS "ps3recomp runtime: ${_FOUND}")
-    add_library(ps3recomp_runtime STATIC IMPORTED)
-    set_target_properties(ps3recomp_runtime PROPERTIES IMPORTED_LOCATION "${_FOUND}")
-    target_include_directories(ps3recomp_runtime INTERFACE "${PS3RECOMP_DIR}/include")
-else()
-    message(STATUS "Building ps3recomp runtime from source")
-    add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk" EXCLUDE_FROM_ALL)
-endif()
-
-# ---- generated recompiled code (src/recomp/, not in git) ----
-file(GLOB_RECURSE RECOMP_SOURCES "src/recomp/*.c" "src/recomp/*.cpp")
+# Lifted game code + the generated HLE NID table (both git-ignored, regenerate
+# with tools/relift.sh).
+file(GLOB RECOMP_SOURCES "src/recomp/*.cpp")
+file(GLOB GEN_SOURCES    "src/gen/*.cpp")
 if(NOT RECOMP_SOURCES)
-    message(WARNING "No src/recomp/ sources — run the lifter + tools/gen_runtime.py first")
+    message(FATAL_ERROR "src/recomp/ is empty — run tools/relift.sh first")
 endif()
 
 add_executable(simpsons
-    src/main.cpp
-    src/elf_loader.cpp
-    src/vm_bridge.cpp
-    src/hle_modules.cpp
-    src/gcm_bridge.cpp
-    src/spurs_hle.cpp
-    src/indirect_dispatch.cpp
-    src/malloc_override.cpp
-    src/crash_handler.cpp
-    src/spu_runner.cpp
-    src/spu_runner_spurs.cpp
-    src/spu/spu_channels.c
-    src/spu/cri_job.c
-    src/spu/spurs_kernel.c
-    src/spu/spurs_policy.c
-    ${RECOMP_SOURCES})
+    "${PS3RECOMP_DIR}/runtime/ppu/tests/boot_main.cpp"   # generic boot harness
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_loader.cpp"        # vm + ELF loader + run
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"           # NID -> handler dispatch
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_sysprx.cpp"        # boot-critical CRT
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp"            # cellFs VFS
+    ${GEN_SOURCES}
+    ${RECOMP_SOURCES}
+)
+
+# Every libs/* subdir (the generated NID table #includes each module's header).
+file(GLOB LIB_INC_DIRS LIST_DIRECTORIES true "${PS3RECOMP_DIR}/libs/*")
 
 target_include_directories(simpsons PRIVATE
-    "${PS3RECOMP_DIR}/include"
-    "${PS3RECOMP_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/compat"            # <dirent.h>/<unistd.h> Win shims
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp"            # ppu_recomp.h
+    "${PS3RECOMP_DIR}/runtime/ppu"
     "${PS3RECOMP_DIR}/runtime/spu"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp")
+    "${PS3RECOMP_DIR}/runtime/prx"
+    "${PS3RECOMP_DIR}/include"
+    ${LIB_INC_DIRS}
+)
 
-target_link_libraries(simpsons PRIVATE ps3recomp_runtime)
-
-target_compile_definitions(simpsons PRIVATE
-    SIMPSONS_GAME_DIR="${SIMPSONS_GAME_DIR_OPT}"
-    SIMPSONS_TITLE_ID="NPUB30563")
-
+target_link_libraries(simpsons PRIVATE "${PS3RECOMP_RUNTIME_LIB}")
 if(WIN32)
-    target_link_libraries(simpsons PRIVATE ws2_32 xinput ole32 bcrypt d3d12 dxgi uuid dxguid)
+    target_link_libraries(simpsons PRIVATE ws2_32 bcrypt xinput ole32 d3d12 dxgi dxguid d3dcompiler)
+    # Every guest call is a host call, so recompiled call chains nest deeply.
+    target_link_options(simpsons PRIVATE /STACK:268435456 /MAP:simpsons.map)
 endif()
-
-if(MSVC)
-    target_compile_options(simpsons PRIVATE /W3 /wd4100 /wd4244 /wd4267 /wd4996 /wd4013 /Zc:__cplusplus /bigobj)
-    target_link_options(simpsons PRIVATE /STACK:0x10000000)
-    target_compile_definitions(simpsons PRIVATE _CRT_SECURE_NO_WARNINGS)
-else()
-    target_compile_options(simpsons PRIVATE -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
-endif()
-
-install(TARGETS simpsons RUNTIME DESTINATION bin)

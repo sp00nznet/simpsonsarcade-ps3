@@ -47,3 +47,14 @@ __pycache__/
 *.pyc
 Thumbs.db
 .DS_Store
+
+# ── Rebuilt-on-shared-harness generated output ──────────────────────────
+# gen_hle_nids.py output
+src/gen/
+# find_functions.py output
+analysis/
+# game data VFS root (your own dump)
+vfs/
+# retired bespoke runtime, kept in git history; not built
+_attic/
+fp_dump.hlsl

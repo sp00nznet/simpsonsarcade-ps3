@@ -1,0 +1,108 @@
+# rpcs3 SPU trace — SPURS dispatch (NPUB30563), captured cont.52
+
+## Modules loaded to LS 0xA00 (the dispatched jobs/policy):
+  14904 0x00a00:0x00501480 0x2200
+  14902 0x00a00:0x0050a180 0x3e80
+
+## One kernel dispatch cycle (CrCellSpursKernel0 DMAC LSA:EA size):
+(GET      #31 0x3ffe0:0x301cd700 0x20)
+(GET      #31 0x00a00:0x00501480 0x2200)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x00080:0x301cd300 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GET      #31 0x3fb00:0x301cd500 0x200)
+(GET      #31 0x3fd00:0x301cda00 0x200)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x02d80:0x301cca80 0x80)
+(PUTLLC   #00 0x02d80:0x301cca80 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+(GETLLAR  #00 0x00100:0x301cca00 0x80)
+(PUTLLC   #00 0x00100:0x301cca00 0x80)
+
+## Hot EA regions (LSA:EA accessed):
+ 464419 0x00100:0x301cca00
+ 107577 0x02d80:0x301cca80
+  74560 0x04a00:0x0022c700
+  27951 0x3f980:0x0022c700
+  20435 0x3fd00:0x301cda00
+  20435 0x3fb00:0x301cd500
+  15060 0x3fb80:0x0022a680
+  12573 0x3fb80:0x0022a700
+  10368 0x00080:0x301cca80
+   8808 0x3ffe0:0x301cd700
+   7465 0x3ffe0:0x301cd500
+   7463 0x00a00:0x00501480
+
+## CellSpurs instance layout (rpcs3 master, confirmed by the GETLLAR offsets above)
+Kernel GETLLARs two 128B lock-lines: instance+0x00 (-> LS 0x100) and instance+0x80 (-> LS 0x2d80).
+
+Lock-line 0 (instance+0x00, 128B):
+  0x00 wklReadyCount1[16] (u8/wkl)   0x10 idleSpuCount/readyCount2[16]
+  0x20 wklCurrentContention[16]      0x30 wklPendingContention[16]
+  0x40 wklMinContention[16]          0x50 wklMaxContention[16]
+  0x60 wklFlag(16)  0x70 wklSignal1(u16) 0x72 sysSrvMessage 0x73 spuIdling
+  0x74 flags1 0x75 sysSrvTraceCtl 0x76 nSpus 0x77 wklFlagReceiver 0x78 wklSignal2(u16)
+Lock-line 1 (instance+0x80, 128B):
+  0x80 wklState1[16] (2=RUNNABLE)    0x90 wklStatus1[16]   0xA0 wklEvent1[16]
+  0xB0 wklEnabled(u32 bitset, MSB=wid0)  0xB4 wklMskB(u32)  ...
+  0xD0 wklState2[16] 0xE0 wklStatus2[16] 0xF0 wklEvent2[16]
+wklInfo1[16] @ 0xB00, 32B/entry: +0x00 addr(module EA) +0x08 arg(u64) +0x10 size(u32)
+  +0x14 uniqueId +0x18 priority[8].   wklInfo2[16] @ 0x1000.
+
+## To make workload 0 ready pointing at a module (the Phase B build):
+  [0x00]=readyCount>0  [0x50]=maxContention>0  [0x80]=2(RUNNABLE)
+  [0xB0]=0x80000000(enabled wid0)   wklInfo1[0]@0xB00: addr=moduleEA, arg=jobchainEA, size
+NOTE: cont.35/36 found THIS GAME's libsre may pack state into +0x00..+0x80 differently than
+rpcs3 master — reconcile against the lifted kernel's actual reads + a memory dump if dispatch stalls.
+
+## Key EAs from the trace (rpcs3 addr space):
+  instance lock-line @ 0x301cca00 (+0x80 @ 0x301cca80)
+  jobChain @ 0x0022c700 (== our game's jobChain handle); descriptors @ 0x0022a6xx
+  modules loaded to LS 0xA00: 0x501480 (size 0x2200) and 0x50a180 (size 0x3e80)
+
+## One full kernel dispatch cycle (CrCellSpursKernel1, cont.53) — PCs
+[0x7e8](resident) GET 0xA00:<moduleA EA>          <- kernel loads module A to 0xA00
+[0x12b0][0x1304][0x1350][0x1e1c][0x1f38][0x1fac][0x26bc][0x14f4][0x156c][0x1674][0x16c8][0x1874][0x1940]
+        GETLLAR/PUTLLC on instance(0x301cca00) + contention(0x301cca80) + GET 0x3fb00/0x3fd00
+        ^ these PCs (0xA00..0x26bc) are MODULE-A code (loaded at 0xA00, size 0x2200) doing the SPURS
+          atomic workload-claim + job-chain dispatch
+[0x314][0x688](resident) GETLLAR/PUTLLC instance(0x301cca00)   <- module returned to resident kernel
+[0x79c](resident) GET 0x3ffe0:<wklInfo>           <- read next WorkloadInfo
+[0x7e8](resident) GET 0xA00:<moduleB EA>          <- kernel loads module B (next) to 0xA00
+
+## CONCLUSION (cont.53): the module that runs at LS 0xA00 spans 0xA00..0x2C00 (~0x2200 bytes) and DOES the
+## atomic claim + dispatch. Our lifted "policy" spu_0001 is only 1936B (0xA00..0x1190) = WRONG/TRUNCATED module.
+## The real module is the game's crTask runtime (0x50xxxx in rpcs3 == our 0x168xxx region). FIX: lift the FULL
+## ~0x2200B module at base 0xA00 + run it (resident kernel 0x100-0x880 loads it + it does the work + returns).
