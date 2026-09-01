@@ -4,22 +4,25 @@
 
 | Phase | Description | Status |
 |---|---|---|
-| 0. Recon | Find PKG, confirm same game as 360, cross-reference | ✅ Complete |
-| 1. Extract | Unpack PSN PKG → EBOOT.BIN + game data | ✅ Complete |
-| 2. Analysis | SELF/ELF structural analysis | ✅ Complete |
-| 3. Decrypt | EBOOT.BIN (SELF) → EBOOT.elf | ✅ Complete |
-| 4. Disasm/find | OPD + heuristic function discovery | ✅ Complete — 14,754 functions |
-| 5. NID resolve | Import table → library/function names | ✅ Complete — 20 libs, 256 funcs |
-| 6. Lift | ppu_lifter → C++ | ✅ Complete — 17,397 funcs, 119 MB |
-| 7. Runtime scaffold | main/loader/bridge/HLE + generator | ✅ Complete |
-| 8. Build & link | Compile 119 MB + link ps3recomp runtime | ✅ Complete — `simpsons.exe` (17.9 MB) |
-| 9. First boot | Enter recompiled CRT | ✅ Reached — runs to CRT, null call next |
-| 8. Boot | Reach main() / CRT init | ⬜ |
-| 9. Arcade core | Mount SIMPSONS.SR, run emulator core | ⬜ |
-| 10. GPU/Audio/Input | RSX→D3D12, cellAudio, cellPad | ⬜ |
-| 11. Playable | 🍩 | ⬜ |
-
----
+| 0. Recon | Find PKG, confirm same game as 360, cross-reference | ✅ |
+| 1. Extract | Unpack PSN PKG → EBOOT.BIN + game data | ✅ |
+| 2. Analysis | SELF/ELF structural analysis | ✅ |
+| 3. Decrypt | EBOOT.BIN (SELF) → EBOOT.elf | ✅ |
+| 4. Disasm/find | OPD + heuristic function discovery | ✅ — 3,813 functions |
+| 5. NID resolve | Import table → library/function names | ✅ — 20 libs, 256 funcs |
+| 6. Lift | ppu_lifter → C++ | ✅ — 5,019 functions, split chunks |
+| 7. Shared harness | Rebuild on ps3recomp's boot harness | ✅ — bespoke runtime retired |
+| 8. First boot | Enter recompiled CRT | ✅ |
+| 9. SPU jobs | Lift + register the SPURS/CRI job binaries | ✅ — both dispatch |
+| 10. Graphics | RSX → D3D12 via the live NV4097 engine | ✅ — RSX_LIVE_DRAW=1 |
+| 11. Boot to menus | Intro videos → GAMER PROFILE → ROM select | ✅ |
+| 12. Arcade core | Mount SIMPSONS.SR, run the emulator core | ✅ — Stage 1 plays |
+| 13. Input | cellPad keyboard + XInput | ✅ |
+| 14. Performance | Release build + inlined bounds check | ✅ — 16 → 28-49 fps |
+| 15. 🍩 Playable | | ✅ |
+| 16. Audio quality | Stutter | ⬜ |
+| 17. UI artifacts | Font atlas drawn as a full-screen quad | ⬜ |
+| 18. Frame rate | 28-49 fps → 60 | ⬜ |
 
 ## Detailed log
 
@@ -124,16 +127,66 @@
 ---
 
 ## Next steps
-1. **CRT bring-up** — set `ctx.lr` to the `sys_process_exit` import stub, prime TLS (`r13`) and the
-   CRT heap, run static constructors. Chase past the first null indirect call.
-2. **Import redirection** — post-lift pass to rewrite the 207 lifted import-stub bodies to call
-   `simpsons_hle()` (direct `bl` calls; indirect `bctrl` already route via the func table).
-3. **Reach `main()`** → mount `0B/SIMPSONS.SR` → arcade-emulator core init.
-4. **Bridge the core HLE libs** (cellGcmSys/RSX, cellAudio, sys_io, sys_fs) as the trace demands.
-5. **Apply the 360 speed-fix** (timebase scaling for the PPE `mftb`).
+1. **Audio stutter.** Plays, but breaks up. Not yet looked at.
+2. **UI artifact.** Entering some menus draws the whole font/button atlas as one
+   screen-filling quad. Intermittent. `LD_VMASK_DBG` showed the vertex-attribute
+   analysis *correct* when it fired (`enabled=0x0109 analysed=0x0109`), so the
+   mask-signature theory is not proven. `YZ_RSX_VERTEX_MODE=L` avoids it.
+   Reproduce with `LD_PRESENT_DBG=1 LD_VMASK_DBG=1` to see whether a wrong
+   surface reached the screen or a layout dropped an attribute.
+3. **Frame rate** — 28-49 fps against 60. No longer single-thread bound: the load
+   is ~1.8 cores over four threads with nothing pegged, so the next look is at
+   pacing/synchronisation rather than raw throughput.
+4. **`pso=434`** draw groups still rejected out of ~45k. Small, but not zero.
 
-## Open questions
-1. How many functions does the PS3 EBOOT lift to vs. the 360's 15,237?
-2. What's the `.SR` archive format? (the 360 build's loader is the oracle)
-3. Does `SIMPSONS_FW.SR`'s size difference (16.5 vs 14.4 MB) reflect different shader/audio assets?
-4. Does the PS3 build use any SPU programs, or is it PPE-only? (likely PPE-only — small arcade title)
+## Answered
+1. *How many functions does the PS3 EBOOT lift to?* 3,813 detected, 5,019 lifted
+   (the old 14,754/17,397 numbers were an over-aggressive detector; the current
+   `find_functions.py` is tighter and the boot is healthier for it).
+2. *Does the PS3 build use SPU programs?* **Yes** — and they are load-bearing.
+   The whole render path goes through CRI middleware on a SPURS job chain, and
+   nothing rendered until both job binaries were lifted and registered. They are
+   raw images built in main memory, not ELFs in the EBOOT, so they only exist at
+   the moment `cellSpurs` hands them over (`SPU_DUMP_MISS` captures them).
+
+---
+
+### 2026-09-01 — Rebuilt on the shared harness; playable
+
+Retired the bespoke runtime (`elf_loader`/`vm_bridge`/`hle_modules`/`gcm_bridge`/
+`indirect_dispatch`/`main.cpp`, all to `_attic/`) and rebuilt on ps3recomp's generic
+boot harness, the same shape flOw and Twisted Metal use. That is what makes the
+live NV4097 → D3D12 draw engine reachable: the harness selects it, so a port with
+its own `main()` gets nothing.
+
+Then five root causes, in order, each one gating the next:
+
+1. **Two SPU job images were never registered.** The runtime already stages jm2
+   jobs; with nothing registered every job logged `dispatch MISS`, so no command
+   lists existed, so the fragment-program address pointed at 64 KB of zeros and
+   all 92 draw groups were rejected in `get_pso`. Captured with `SPU_DUMP_MISS`,
+   lifted, registered → the Konami logo appeared.
+2. **`cellPadGetData` always reported a change packet.** This title *drains* the
+   pad (`while (GetData(...) == OK && d.len > 0)`), so that loop never ended and
+   the main thread pegged a core inside libpad. Fixed to one packet per host
+   report. (Reporting on *change* was the first attempt and is wrong — a held
+   button yields one packet.)
+3. **No keyboard backend** — XInput only, and nothing plugged in.
+4. **`cellSaveDataAutoSave2`** called a guest OPD as a host function pointer and
+   crashed on first-boot profile creation.
+5. **The harness never called `cellGame_init_from_paramsfo`**, so saves went to
+   `BLES00000`.
+
+Then two more, found by measurement rather than reading:
+
+- **The flicker was one hardcoded argument.** `rsx_live_draw_present(0)` presents
+  the surface registered for display buffer 0; this title flips `0,1,0,1…`, so
+  half its frames showed the previous image. Ruled out lost FIFO commands (zero
+  resyncs) and torn texture reads (`LD_TEX_RACE`: 0 torn out of 14,336) first.
+  The "black flashes" turned out to be `PrintWindow` failing on a flip-model swap
+  chain — a measurement artifact, not the game.
+- **The build was Debug.** CMake fills `CMAKE_BUILD_TYPE` in during `project()`
+  for MSVC-like toolchains and picks Debug; on a 25 MB generated translation unit
+  that is the whole game unoptimised. 16 → 49 fps. Found by sampling the hot
+  thread's RIP externally, after the built-in guest profiler proved useless (it
+  samples `ctx.cia`, stale outside syscalls).

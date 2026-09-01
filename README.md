@@ -7,15 +7,25 @@ PC executable — no emulator required — built on [ps3recomp](https://github.c
 
 This is the PS3 sibling of our **already-playable** Xbox 360 port,
 [`simpsonsarcade`](https://github.com/sp00nznet/simpsonsarcade). Same game, same Konami arcade
-core, same data files — just a different flavour of PowerPC underneath. The 360 build already
-boots through menus, renders gameplay, plays audio, and takes controller input at full speed.
-The plan: steal everything we learned over there and point it at the Cell.
+core, same data files — just a different flavour of PowerPC underneath. The plan was to steal
+everything we learned over there and point it at the Cell — and it worked: this build boots,
+plays its intro, reaches the menus, and runs the arcade core natively.
 
 > **Why this is easier than it sounds:** both the Xbox 360 (Xenon) and the PS3 (Cell PPE) run
 > **64-bit big-endian PowerPC with VMX/AltiVec**. We already recompiled this exact game once.
 > The PS3 EBOOT is *the same game logic* compiled by a different toolchain for a sister CPU.
 
 ---
+
+## 🎥 It Runs
+
+![The Simpsons Arcade Game running natively](docs/media/attract.gif)
+
+*Attract mode, captured from the native build — no emulator.*
+
+| | |
+|---|---|
+| ![Intro](docs/media/01-intro.png) | ![Attract](docs/media/02-attract-canyon.png) |
 
 ## 📺 The Game
 
@@ -43,26 +53,36 @@ already-working 360 build is such a strong oracle. See [`docs/emulator-architect
 
 ## 🎯 Status
 
+**Playable.** The title boots, plays its intro, reaches the menus, and runs the
+arcade core at 28–49 fps with keyboard input.
+
 | Milestone | Status |
 |---|---|
 | Locate & extract the PSN PKG | ✅ Done |
 | Confirm it's the same game as the 360 build | ✅ Done — `SIMPSONS.SR` is **byte-identical** (2,748,416 B) |
-| ELF / SELF structural analysis | ✅ Done — PPC64 BE, entry `0x186900`, text @ `0x10000` |
-| 360 ↔ PS3 cross-reference | ✅ Done — see [`docs/360-crossref.md`](docs/360-crossref.md) |
 | Decrypt EBOOT.BIN (SELF → ELF) | ✅ Done — `rpcs3 --decrypt` (no RAP needed) |
-| Function discovery | ✅ Done — **14,754 functions** (vs 360's 15,237 — 96.8%) |
-| It's an arcade emulator! | ✅ Confirmed — ROM names, `YM2151`, `z80`, sprite engine in the EBOOT |
-| Import / NID resolution | ✅ Done — **20 libs, 256 funcs** (`imports.json`) |
-| PPU lift (ppu_lifter → C++) | ✅ Done — **17,397 funcs, 119 MB** |
-| Instruction coverage | ✅ Done — patched lifter; **0 real-instruction TODOs** remain |
-| Runtime scaffold | ✅ Done — main/loader/bridge/HLE + generator (parses clean) |
-| Build & link against ps3recomp | ✅ Done — **`simpsons.exe` (17.9 MB)** builds |
-| First boot (recompiled CRT runs) | ✅ Reached — executes guest CRT; CRT bring-up next |
-| Reach `main()` / CRT init | ⬜ Not started |
-| Arcade core running | ⬜ Not started |
-| Graphics (RSX → D3D12) | ⬜ Not started |
-| Audio / Input | ⬜ Not started |
-| 🍩 Playable | ⬜ Not started |
+| Function discovery + PPU lift | ✅ Done — 3,813 detected → **5,019 lifted** |
+| Build on the shared ps3recomp harness | ✅ Done — same shape as flOw / Twisted Metal |
+| First boot (recompiled CRT runs) | ✅ Done |
+| Reach `main()` / CRT init | ✅ Done |
+| SPURS/CRI SPU jobs execute | ✅ Done — the two job binaries are lifted and registered |
+| Graphics (RSX → D3D12) | ✅ Done — caner's live NV4097 engine, `RSX_LIVE_DRAW=1` |
+| Intro videos → menus → attract | ✅ Done |
+| Arcade core running | ✅ Done — Stage 1 Downtown Springfield plays |
+| Input | ✅ Keyboard; XInput pad when one is attached |
+| 🍩 Playable | ✅ **Yes** |
+| Audio | ⚠️ Plays, stutters |
+| UI artifacts | ⚠️ Font atlas occasionally drawn as a full-screen quad |
+| Frame rate | ⚠️ 28–49 fps (target 60) |
+
+### Known issues
+
+- **Audio stutters.** Not yet investigated.
+- **UI artifact.** Entering some menus can draw the whole font/button atlas as one
+  screen-filling quad. Intermittent; the vertex-attribute analysis was measured
+  correct when it happened, so the cause is still open. `YZ_RSX_VERTEX_MODE=L` is
+  a usable workaround, not a diagnosis.
+- **Frame rate.** 28–49 fps rather than 60. No longer single-thread bound.
 
 See [`PROGRESS.md`](PROGRESS.md) for the blow-by-blow.
 
@@ -99,24 +119,49 @@ Full analysis: [`docs/360-crossref.md`](docs/360-crossref.md) · PS3 binary note
 ## 🛠️ Pipeline
 
 ```
-   PSN PKG  ──►  EBOOT.BIN (SELF)  ──►  EBOOT.elf  ──►  ppu_lifter  ──►  C++  ──►  link ps3recomp  ──►  simpsons.exe
-   (done)        (encrypted, next)      (decrypt)      (90k+ funcs)            (HLE LV2/RSX/audio)
+  PSN PKG ──► EBOOT.BIN ──► EBOOT.elf ──► ppu_lifter ──► C++ ──► link ps3recomp ──► simpsons.exe
+              (SELF)        (decrypt)     (5,019 fns)           (shared harness + HLE)
+                                              ▲
+             SPURS job images ── spu_lifter ──┘   (captured at dispatch, not in the EBOOT)
 ```
 
 Same five-stage flow as every ps3recomp port — extract, decrypt, analyse, lift, link. The
 [`flOw`](https://github.com/sp00nznet/flow) port is the reference implementation of this pipeline.
 
-## 📦 Building (once lifting begins)
+## 📦 Building
+
+Prereqs: Python 3.9+, CMake 3.20+, **clang-cl** + Ninja (the shared harness uses
+`__builtin_bswap` and weak symbols MSVC lacks), and a sibling
+[ps3recomp](https://github.com/sp00nznet/ps3recomp) checkout.
 
 ```bash
-# Prereqs: Python 3.8+, CMake 3.20+, MSVC 2022 (or Clang/GCC), ps3recomp checked out at ../../ps3
-# 1. Decrypt your own legally-dumped EBOOT.BIN → game/EBOOT.elf
-# 2. Analyse + lift
-python tools/recompile.py --config config.toml --ps3recomp-dir ../../ps3
-# 3. Build
-cmake -B build -DPS3RECOMP_DIR=../../ps3
-cmake --build build --config Release
+# 1. Decrypt your own legally-dumped EBOOT.BIN -> game/EBOOT.elf, and lay the
+#    game data out the way the harness expects:
+#       vfs/PS3_GAME/PARAM.SFO
+#       vfs/PS3_GAME/USRDIR/EBOOT.elf
+#       vfs/PS3_GAME/USRDIR/0B/SIMPSONS.SR, SIMPSONS_FW.SR
+
+# 2. Lift the PPU image and generate the HLE NID table:
+PS3RECOMP=../ps3recomp ./tools/relift.sh
+
+# 3. Capture and lift the SPU job binaries. They are raw images the game builds
+#    in main memory, not ELFs in the EBOOT, so they only exist at the moment
+#    cellSpurs hands them over:
+SPU_DUMP_MISS=spu_dump ./build/simpsons vfs/PS3_GAME/USRDIR/EBOOT.elf
+PS3RECOMP=../ps3recomp ./tools/relift.sh     # now lifts them too
+
+# 4. Build. Release is the default and it matters -- an unoptimised build of the
+#    25 MB recompiled translation unit runs at a third the speed.
+cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+cmake --build build
+
+# 5. Run, with the live NV4097 -> D3D12 draw engine:
+RSX_LIVE_DRAW=1 ./build/simpsons vfs/PS3_GAME/USRDIR/EBOOT.elf
 ```
+
+**Controls (keyboard).** Arrows move · `Z` attack · `X` jump · `A`/`S`
+square/triangle · `Q`/`W` L1/R1 · `Enter` START · `Tab` SELECT. An XInput pad
+takes over automatically when one is plugged in.
 
 ## ⚖️ Legal
 
