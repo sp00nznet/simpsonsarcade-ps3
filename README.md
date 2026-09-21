@@ -75,6 +75,37 @@ arcade core at 28–49 fps with keyboard input.
 | UI artifacts | ⚠️ Font atlas occasionally drawn as a full-screen quad |
 | Frame rate | ⚠️ 28–49 fps (target 60) |
 
+### Verified against current ps3recomp master (2026-09-21)
+
+"Playable" re-checked rather than carried forward, because two other ports in
+this family turned out to be claiming status measured against broken setups.
+Rebuilt against ps3recomp master and driven headlessly, with frames read back
+from the swapchain (`LD_FRAME_DUMP`) rather than trusted from a log:
+
+* arcade-cabinet frame -> Konami intro (the falling diamond) -> character select
+  (Lisa) -> **Stage 1, Downtown Springfield, in play** -- health bar, 3 lives,
+  a Burns henchman outside the Jewelers, CREDITS counter, PRESS START slots for
+  players 2-4;
+* two captures 240 flips apart show both characters in different positions, so
+  it is live gameplay and not a held frame;
+* 74,915 command packets, 63,310 draw groups executed, **zero** failed file
+  opens.
+
+**Driving it headlessly:** press START (`0x0008`) **once** to coin in, then use
+**only CROSS** (`0x4000`). `PAD_AUTOPRESS` pulses START every few seconds, which
+repeatedly opens the in-game pause menu -- that menu ("RESUME GAME" / "RETURN TO
+THE GAME") is itself proof a game is running, but it hides the gameplay behind
+it.
+
+```bash
+RSX_LIVE_DRAW=1 PAD_SCRIPT="15:0x0008,30:0x4000,50:0x4000,70:0x4000,..."   LD_FRAME_DUMP=shots LD_FRAME_DUMP_EVERY=60   ./build/simpsons vfs/PS3_GAME/USRDIR/EBOOT.elf
+```
+
+One new number worth chasing: **11,597 of 74,907 draw groups (~15%) were dropped
+on `pso`** -- pipeline-state creation failing -- over a ten-minute run. The game
+is playable regardless, but that is a sixth of the scene never reaching the GPU
+and is a plausible contributor to the font-atlas artifact below.
+
 ### Known issues
 
 - **Audio stutters.** Not yet investigated.
