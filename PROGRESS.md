@@ -221,3 +221,37 @@ Verification: `LD_FRAME_DUMP_EVERY=1` over ~2,800 frames, scanned for frames
 that differ from both neighbours while the neighbours match each other --
 107 before, 0 after (the only hit left is the arcade ROM's own blank frame at
 a scene cut). Three 180 s soak runs without a stall; gameplay 35-57 fps.
+
+---
+
+### 2026-09-27 — Music plays, audio stutter fixed
+
+[ps3recomp#186](https://github.com/sp00nznet/ps3recomp/pull/186). Found by dumping
+the mixer's output (`AUDIO_DUMP`) and measuring it, not by listening:
+
+1. **`cellAtrac` did not exist.** The menu music is three ATRAC3plus RIFF tracks
+   inside `SIMPSONS_FW.SR` (fmt 0xFFFE, 48 kHz stereo, 688-byte frames); the game
+   gave up after 24 unresolved decodes. Now implemented on FFmpeg's decoder
+   (PPSSPP's `at3_standalone`). Sample mapping checked on all three tracks: the
+   first audible sample is decoder index `fact[1] + 0x170`, and adding `fact[0]`
+   lands exactly on the data chunk's last frame boundary.
+2. **The mixer's `Sleep(2)`/`Sleep(5)` pacing** ran 170-230 blocks/s against the
+   device's 187.5 (`AUDIO_STATS`): up to 11,500 samples/s truncated at submit,
+   underruns in between.
+3. **Pacing by the device was not enough.** Topping WASAPI up per period moved
+   the read index in bursts; the captured music then correlated perfectly with
+   the reference but with ~1,300 gaps in 15 s and only 9-12 decodes/s against
+   the 23.4 real time needs. The lifted music thread (`func_000A0D68`, decode)
+   and its consumer (`func_000A15A0`, `dfMusic_PS3`) showed why: the consumer
+   polls the read index every 2.5 ms (`sys_timer_usleep(0x9C4)`) and refills ONE
+   block per change. The mixer now advances the index one block per 5.33 ms of
+   clock time, never two within 3 ms.
+4. **Scheduling.** Under gameplay load the mixer thread woke late (131-170
+   blocks/s) until it ran time-critical; the game's priority-0 audio threads run
+   above normal.
+
+Verification: 130 s from boot into Stage 1 at 187 blocks/s with zero underruns;
+menu music matched 100 ms at a time against an offline decode, 4 lost blocks in
+~50 s. A/B runs show neither cellAtrac nor the priority boost moves the frame
+rate. (Gameplay fps was noisy during this session: another port's session had
+~9 of the machine's 12 threads busy.)

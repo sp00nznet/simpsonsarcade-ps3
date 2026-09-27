@@ -76,7 +76,7 @@ progress, and runs the arcade core at 35–60 fps with keyboard input.
 | Save / load | ✅ Settings & progress round-trip across boots |
 | UI / glyphs | ✅ Fixed — no full-screen font atlas, no garbled text |
 | Frame pacing | ✅ Fixed — no black/partial flash frames |
-| Audio | ⚠️ Plays, stutters (`cellAtrac` unimplemented) |
+| Audio | ✅ Music (ATRAC3plus) plays; mixer paced to the device, no underruns |
 | Frame rate | ⚠️ 60 in menus, 35–57 in gameplay |
 
 ### Verified against current ps3recomp master (2026-09-21)
@@ -136,10 +136,37 @@ Built against the gh3 runtime lineage plus
 - **Save reported corrupt every boot.** The load callback requires a SECUREFILE
   entry; the runtime reported every file as NORMALFILE. The file type now persists.
 
+### Fixed 2026-09-27: audio stutter and missing music
+
+With [ps3recomp#186](https://github.com/sp00nznet/ps3recomp/pull/186). Measured from
+`AUDIO_STATS=1` and from `AUDIO_DUMP`, the exact samples handed to the device:
+
+| | before | after |
+|---|---|---|
+| mixer blocks/s (device plays 187.5) | 131–232 | 187 |
+| device underruns | up to 40/s | 0 over 130 s |
+| samples dropped at submit | up to 11,500/s | 0 |
+| menu music | never played (`cellAtrac` missing) | sample-exact vs. an offline decode |
+| lost music blocks | ~1,300 gaps in 15 s (first cut) | ~4 per 50 s |
+
+- **`cellAtrac` was unimplemented**, so the three ATRAC3plus tracks in
+  `SIMPSONS_FW.SR` never played. It now decodes with FFmpeg's decoder (PPSSPP's
+  `at3_standalone`, LGPL, vendored separately in the runtime).
+- **The mixer ran at the wrong speed.** It paced itself with `Sleep(2)`/`Sleep(5)`,
+  so it drifted between 170 and 230 blocks/s, truncating audio when it ran ahead and
+  starving the device when it lagged. It now consumes one block per 5.33 ms.
+- **The spacing matters to the game.** `dfMusic_PS3` polls the audio read index
+  every 2.5 ms and refills exactly one block per change, so the index must advance
+  one block at a time. An early fix that topped the device up in bursts played the
+  music at half rate. The game's priority-0 audio threads also now run above normal
+  host priority, and the mixer thread at time-critical.
+
 ### Known issues
 
-- **Audio stutters.** `cellAtracDecode` and five other `cellAtrac` imports are
-  unresolved -- the likely cause, not yet confirmed.
+- **In-stage sound thins out when the frame rate drops.** The arcade core seems to
+  produce its sound per emulated frame. Below 60 fps its own sample stream has
+  gaps, 7× denser than in the 60 fps menus. These aren't lost mixer blocks (none are
+  block-aligned); it is the frame rate showing up in the audio.
 - **"Not signed in to a gamer profile."** The title's PSN-offline notice (its NP
   init imports are unresolved). It does not block saving -- the save round-trips.
 - **Frame rate.** 60 in menus, 35–57 in gameplay.
