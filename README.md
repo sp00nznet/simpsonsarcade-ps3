@@ -19,13 +19,15 @@ plays its intro, reaches the menus, and runs the arcade core natively.
 
 ## 🎥 It Runs
 
-![The Simpsons Arcade Game running natively](docs/media/attract.gif)
+![The Simpsons Arcade Game running natively](docs/media/hero.gif)
 
-*Attract mode, captured from the native build — no emulator.*
+*Main menu → profile dialog → character select → Stage 1, captured frame-by-frame from the
+native build (2026-09-26) — no emulator. No black flashes, no garbled glyphs.*
 
 | | |
 |---|---|
-| ![Intro](docs/media/01-intro.png) | ![Attract](docs/media/02-attract-canyon.png) |
+| ![Main menu](docs/media/04-main-menu.png) | ![Profile dialog](docs/media/05-profile-dialog.png) |
+| ![Stage 1](docs/media/06-stage1.png) | ![Intro](docs/media/01-intro.png) |
 
 ## 📺 The Game
 
@@ -53,8 +55,8 @@ already-working 360 build is such a strong oracle. See [`docs/emulator-architect
 
 ## 🎯 Status
 
-**Playable.** The title boots, plays its intro, reaches the menus, and runs the
-arcade core at 28–49 fps with keyboard input.
+**Playable.** The title boots, plays its intro, reaches the menus, saves and loads its
+progress, and runs the arcade core at 35–60 fps with keyboard input.
 
 | Milestone | Status |
 |---|---|
@@ -71,9 +73,11 @@ arcade core at 28–49 fps with keyboard input.
 | Arcade core running | ✅ Done — Stage 1 Downtown Springfield plays |
 | Input | ✅ Keyboard; XInput pad when one is attached |
 | 🍩 Playable | ✅ **Yes** |
-| Audio | ⚠️ Plays, stutters |
-| UI artifacts | ⚠️ Font atlas occasionally drawn as a full-screen quad |
-| Frame rate | ⚠️ 28–49 fps (target 60) |
+| Save / load | ✅ Settings & progress round-trip across boots |
+| UI / glyphs | ✅ Fixed — no full-screen font atlas, no garbled text |
+| Frame pacing | ✅ Fixed — no black/partial flash frames |
+| Audio | ⚠️ Plays, stutters (`cellAtrac` unimplemented) |
+| Frame rate | ⚠️ 60 in menus, 35–57 in gameplay |
 
 ### Verified against current ps3recomp master (2026-09-21)
 
@@ -106,14 +110,39 @@ on `pso`** -- pipeline-state creation failing -- over a ten-minute run. The game
 is playable regardless, but that is a sixth of the scene never reaching the GPU
 and is a plausible contributor to the font-atlas artifact below.
 
+### Fixed 2026-09-26: flashes, glyphs, saves
+
+Built against the gh3 runtime lineage plus
+[ps3recomp#185](https://github.com/sp00nznet/ps3recomp/pull/185). Measured by dumping
+**every** presented frame and scanning for single-frame outliers:
+
+| | before | after |
+|---|---|---|
+| single-frame flashes | 107 in ~2,600 frames | 0 in ~2,800 |
+| presents of a surface cleared after its last draw | ~10% | 0.03% |
+| draws dropped on `pso` | 17k–46k per run | **0** |
+| second boot | "Settings and Progress data is corrupt" | loads |
+| gameplay fps | 19–37 | 35–57 |
+
+- **Flashes and glyphs were one bug.** Every frame the game runs a SPURS job chain
+  that DMAs the fragment programs and vertices for draws it has *already queued*,
+  then calls `cellSpursJoinJobChain` before submitting. Join was a no-op, so the
+  RSX drain reached those draws first: a program that read as zeros dropped the
+  draw (a black frame) and half-written vertices drew the font atlas full-screen.
+  Join now waits for the chain. This was also the "15% dropped on `pso`" above.
+- **Frames missing their last draws.** `_cellGcmSetFlipCommand` flipped at call
+  time, ~2.4 KB of commands before the game flushed its frame's tail. The flip now
+  goes into the FIFO at `ctx->current`, as the real library does.
+- **Save reported corrupt every boot.** The load callback requires a SECUREFILE
+  entry; the runtime reported every file as NORMALFILE. The file type now persists.
+
 ### Known issues
 
-- **Audio stutters.** Not yet investigated.
-- **UI artifact.** Entering some menus can draw the whole font/button atlas as one
-  screen-filling quad. Intermittent; the vertex-attribute analysis was measured
-  correct when it happened, so the cause is still open. `YZ_RSX_VERTEX_MODE=L` is
-  a usable workaround, not a diagnosis.
-- **Frame rate.** 28–49 fps rather than 60. No longer single-thread bound.
+- **Audio stutters.** `cellAtracDecode` and five other `cellAtrac` imports are
+  unresolved -- the likely cause, not yet confirmed.
+- **"Not signed in to a gamer profile."** The title's PSN-offline notice (its NP
+  init imports are unresolved). It does not block saving -- the save round-trips.
+- **Frame rate.** 60 in menus, 35–57 in gameplay.
 
 See [`PROGRESS.md`](PROGRESS.md) for the blow-by-blow.
 

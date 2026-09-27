@@ -190,3 +190,34 @@ Then two more, found by measurement rather than reading:
   that is the whole game unoptimised. 16 → 49 fps. Found by sampling the hot
   thread's RIP externally, after the built-in guest profiler proved useless (it
   samples `ctx.cia`, stale outside syscalls).
+
+---
+
+### 2026-09-26 — Flashes, glyphs and saves fixed
+
+Rebuilt against the gh3 runtime lineage (`G:/recomp/ps3` at f3fb769, which
+already carries gh3's savedata, render-target-copy and zero-size-scissor
+work), then three runtime root causes, all measured before touching code
+([ps3recomp#185](https://github.com/sp00nznet/ps3recomp/pull/185)):
+
+1. **`cellSpursJoinJobChain` was a no-op.** The per-frame job chain DMAs the
+   fragment programs and vertices of draws already sitting in the FIFO, and
+   the game joins it before flushing. Found by logging each PSO miss with its
+   FP address (reads of all-zero programs at IO 0xA3CA80.., stride 0x180) and
+   `SPU_DMA_RANGE` showing the SPU job (`pc=0x073F8`) writing them *after* the
+   drain had run the draw. Black flashes and the full-screen font atlas were
+   both this. PSO drops 17k-46k -> 0. (The FIFO's own `SEMA acquire` on label 1
+   is a red herring: it waits for 0 and nothing ever writes the label.)
+2. **The HLE flip fired at call time**, with `ctx->current` ~2.4 KB past `put`:
+   frames presented without their last draws. The flip is now a marker in the
+   FIFO. That exposed a race in the runtime's drain-side ring recycle (put
+   reset to 0 mid-write, the guest spun on `ref` forever), so the ring now
+   wraps on the guest thread at flip time.
+3. **Save "corrupt" on every boot.** The lifted load funcStat
+   (`func_000A31F0`) scans `fileList` for `fileType == SECUREFILE` and returns
+   ERR_BROKEN otherwise; the runtime reported everything as NORMALFILE.
+
+Verification: `LD_FRAME_DUMP_EVERY=1` over ~2,800 frames, scanned for frames
+that differ from both neighbours while the neighbours match each other --
+107 before, 0 after (the only hit left is the arcade ROM's own blank frame at
+a scene cut). Three 180 s soak runs without a stall; gameplay 35-57 fps.
