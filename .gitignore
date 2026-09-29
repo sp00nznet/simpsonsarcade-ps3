@@ -70,3 +70,7 @@ scratch/
 # capture scratch from driving the game; README media is kept under docs/media
 *.png
 !docs/media/*.png
+
+# Runtime save data (contains game-owned files) and extra build trees
+gamedata/
+build-*/

@@ -255,3 +255,56 @@ menu music matched 100 ms at a time against an offline decode, 4 lost blocks in
 ~50 s. A/B runs show neither cellAtrac nor the priority boost moves the frame
 rate. (Gameplay fps was noisy during this session: another port's session had
 ~9 of the machine's 12 threads busy.)
+
+---
+
+### 2026-09-21 — "Playable" re-verified against ps3recomp master
+
+(Moved from the README.) Rebuilt against ps3recomp master and driven headlessly,
+with frames read back from the swapchain (`LD_FRAME_DUMP`) rather than trusted
+from a log:
+
+- arcade-cabinet frame -> Konami intro -> character select (Lisa) -> Stage 1,
+  Downtown Springfield, in play: health bar, 3 lives, a Burns henchman outside
+  the Jewelers, CREDITS counter, PRESS START slots for players 2-4;
+- two captures 240 flips apart show the characters in different positions, so
+  it is live gameplay and not a held frame;
+- 74,915 command packets, 63,310 draw groups executed, zero failed file opens.
+
+At the time ~15% of draw groups were dropped on `pso`; the 2026-09-26 SPURS
+join fix above took that to zero.
+
+---
+
+### 2026-09-29 — Online play over psnr
+
+Two instances on one machine play an online match through
+[psnr](https://github.com/sp00nznet/psnr): Create Match, Quick Match, the
+online lobby, character select, the host's game setup, then Stage 1 in sync,
+with each player's input showing on both screens.
+
+This needed [ps3recomp#200](https://github.com/sp00nznet/ps3recomp/pull/200)
+(Matching2/Score over psnr, P2P sockets) and
+[ps3recomp#202](https://github.com/sp00nznet/ps3recomp/pull/202). The steps
+past the lobby were:
+
+1. **The title's zlib.** The host sends its 58 KB game setup as a zlib stream
+   (header `^%05X^%05X`, then `compress()` output) over a TCP P2P socket. The
+   lifted zlib 1.2.3 produced a 10-byte stream for any input: `build_tree`'s
+   first loop was lifted as its own chunk ending in `bdnz`, and the lifter
+   never emitted the fall-through, so the chunk returned mid-function with r31
+   unrestored and `_tr_flush_block` ran on `s == 1`. Fixed in the lifter
+   (#202); a full re-lift changes two functions.
+2. **The stream's source port.** The receiver matches the connection to a room
+   member by `{ip, port}` and ignores anyone else. The host's connecting socket
+   used an ephemeral port; P2P stream sockets now share the P2P port.
+3. **The port on accept.** The title takes the peer's port from `sin_vport`
+   (+8), the field it fills on connect. Accept now writes it there.
+
+Found by a write-watch on the client's session state (`PPU_WWATCH`), a
+function-entry trace after the setup arrived, and comparing lifted chunks with
+the disassembly.
+
+Two instances must run with `PS3_VERBOSE=0`: with per-wait logging to a file
+both fell to ~1 fps in the stage and the game dropped the other player as "not
+responding". With it off both hold 40-50 fps.
